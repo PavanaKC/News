@@ -8,53 +8,73 @@
 import Foundation
 import CoreData
 
-class NewsVM: BaseVM {
-    var news = [News]()
-    private let moc = coreData.persistentContainer.viewContext
+final class NewsVM: BaseVM {
+    var newsList = [News]()
      
     //Get News Info
-    func getNews(completion: @escaping () -> Void) {
-        webservice.getRequest(URLString: newsListUrl, headers: [:]) { [weak self] (data, error) in
-            guard let jsonData = data, let newsArray = jsonData[ResponseKey.articles.rawValue] as? [[String: Any]]
-            else {
-                completion()
-                return
-            }
+    func getNews(completion: @escaping (Bool) -> Void) {
+        webservice.getRequest(URLString: URLConstants.newsListUrl.rawValue + "\(apiKey)", headers: [:]) { [weak self] result in
+            guard let `self` = self else { return }
             
-            self?.saveNewsData(newsData: newsArray, completion: {
-                DispatchQueue.main.async {
-                    completion()
-                }
-            })
+            switch result {
+            case .success(let response):
+                        
+                self.saveNewsData(newsJsonData: response, completion: { [weak self] in
+                    guard let `self` = self else { return }
+                    DispatchQueue.main.async {
+                        self.readNewsData()
+                        completion(true)
+                    }
+                })
+            case .failure(_):
+                completion(false)
+            }
         }
-    }
-    
-    //Read from CoreData
-    func readNewsData() -> [News]? {
-        let request: NSFetchRequest<News> = News.fetchRequest()
-        
-        do {
-            news = try moc.fetch(request)
-            return news
-        } catch let error as NSError {
-            print(error.localizedDescription)
-        }
-        return nil
     }
     
     //MARK: Private methods
     
     //Save to CoreData
-    private func saveNewsData(newsData: [[String: Any]], completion: @escaping () -> Void) {
+    private func saveNewsData(newsJsonData: AnyObject, completion: @escaping () -> Void) {
+        newsList.removeAll()
         
-        for eachData in newsData {
-            let news = News(context: moc)
-            news.title = eachData[ResponseKey.title.rawValue] as? String
-            news.author = eachData[ResponseKey.author.rawValue] as? String
-            news.explanation = eachData[ResponseKey.description.rawValue] as? String
-            news.imageUrl = eachData[ResponseKey.imageUrl.rawValue] as? String
+        moc.performAndWait {
+            if  let jsonData = newsJsonData as? [String: Any], let newsArray = jsonData[ResponseKey.articles.rawValue] as? [[String: Any]] {
+                for eachData in newsArray {
+                    
+                    let title = eachData[ResponseKey.title.rawValue] as? String
+                    let fetchRequest: NSFetchRequest<News> = News.fetchRequest()
+                    fetchRequest.predicate = NSPredicate(format: "title == %@", title ?? "")
+                    
+                    var results: [NSManagedObject]
+                    do {
+                        results = try moc.fetch(fetchRequest)
+                        let news = results.first as? News ?? News(context: moc)
+                        news.title = title
+                        news.author = eachData[ResponseKey.author.rawValue] as? String
+                        news.explanation = eachData[ResponseKey.description.rawValue] as? String
+                        news.imageUrl = eachData[ResponseKey.imageUrl.rawValue] as? String
+                        news.articleUrl = eachData[ResponseKey.articleUrl.rawValue] as? String
+                        newsList.append(news)
+                    }
+                    catch {
+                        print("error executing fetch request: \(error)")
+                    }
+                }
+            }
             coreData.saveContext()
+            completion()
         }
-        completion()
+    }
+    
+    //Read from CoreData
+    func readNewsData() {
+        let request: NSFetchRequest<News> = News.fetchRequest()
+        
+        do {
+            newsList = try moc.fetch(request)
+        } catch let error as NSError {
+            print(error.localizedDescription)
+        }
     }
 }

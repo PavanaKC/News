@@ -6,22 +6,54 @@
 //
 
 import Foundation
+import CoreData
 
-class DetailVM: BaseVM {
+final class DetailVM: BaseVM {
     
-    func getArticleInfo(url: String, articleID: String, completion: @escaping ((Int?) -> Void)) {
-        webservice.getRequest(URLString: newsListUrl, headers: [:]) { [weak self] (data, error) in
-            guard let jsonData = data, let newsArray = jsonData[ResponseKey.articles.rawValue] as? [[String: Any]]
-            else {
-                completion(0)
-                return
-            }
+    func getLikesInfo(articleID: String, currentNews: News, completion: @escaping (Bool) -> Void) {
+        webservice.getRequest(URLString: URLConstants.likesUrl.rawValue + articleID, headers: [:]) { [weak self] result in
+            guard let `self` = self else { return }
             
-            self?.saveNewsData(newsData: newsArray, completion: {
-                DispatchQueue.main.async {
-                    completion(0)
-                }
-            })
+            switch result {
+            case .success(let response):
+                let count = response[ResponseKey.likes.rawValue] as? Int
+                self.updateCoreData(news: currentNews, count: count ?? 0, key: ResponseKey.likesCount.rawValue, completion: {
+                    DispatchQueue.main.async {
+                        completion(true)
+                    }
+                })
+                
+            case .failure(_):
+                completion(false)
+            }
+        }
+    }
+    
+    func getCommentsInfo(articleID: String, currentNews: News, completion: @escaping (Bool) -> Void) {
+        webservice.getRequest(URLString: URLConstants.commentUrl.rawValue + articleID, headers: [:]) { [weak self] result in
+            guard let `self` = self else { return }
+            
+            switch result {
+            case .success(let response):
+                let count = response[ResponseKey.comments.rawValue] as? Int
+                self.updateCoreData(news: currentNews, count: count ?? 0, key: ResponseKey.commentsCount.rawValue, completion: {
+                    DispatchQueue.main.async {
+                        completion(true)
+                    }
+                })
+                
+            case .failure(_):
+                completion(false)
+            }
+        }
+    }
+    
+    //MARK: Private methods
+    private func updateCoreData(news: News, count: Int, key: String, completion: @escaping () -> Void) {
+        moc.performAndWait {
+            news.setValue(count, forKey: key)
+            coreData.saveContext()
+            completion()
         }
     }
 }

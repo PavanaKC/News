@@ -7,7 +7,7 @@
 
 import UIKit
 
-class DetailViewController: UIViewController {
+final class DetailViewController: BaseViewController {
 
     @IBOutlet private weak var newsImage: UIImageView!
     @IBOutlet private weak var commentsButton: UIButton!
@@ -46,24 +46,39 @@ class DetailViewController: UIViewController {
     private func fetchData() {
         activityIndicator.isHidden = false
         detailVM.downloadImage(from: currentNews.imageUrl ?? "") { [weak self] data in
-            self?.activityIndicator.isHidden = true
+            guard let `self` = self else { return }
+            self.activityIndicator.isHidden = true
             if let imageData = data {
-                self?.newsImage.image = UIImage(data: imageData)
+                self.newsImage.image = UIImage(data: imageData)
+            } else {
+                self.showToastLabel(message: "Error while fetching news Information. Try again after sometime")
             }
         }
         
-        let articleID = currentNews.articleUrl?.replacingCharacters(in: "/", with: "-")
+        let articleID = currentNews.articleUrl?.replacingOccurrences(of: "/", with: "-")
         
         activityIndicator.isHidden = false
-        detailVM.getArticleInfo(url: likesUrl, articleID: articleID, completion: { [weak self] count in
-            self?.activityIndicator.isHidden = true
-            self?.likeButton.setTitle("\(count ?? 0)", for: .normal)
+        detailVM.getLikesInfo(articleID: articleID ?? "", currentNews: currentNews, completion: { [weak self] isSuccess in
+            guard let `self` = self else { return }
+            
+            if isSuccess {
+                self.activityIndicator.isHidden = true
+                self.likeButton.setTitle(" \(self.currentNews.likesCount)", for: .normal)
+            } else {
+                self.showToastLabel(message: "Error while fetching news Information. Try again after sometime")
+            }
         })
         
         activityIndicator.isHidden = false
-        detailVM.getArticleInfo(url: commentUrl, articleID: articleID, completion: { [weak self] count in
-            self?.activityIndicator.isHidden = true
-            self?.commentsButton.setTitle("\(count ?? 0)", for: .normal)
+        detailVM.getCommentsInfo(articleID: articleID ?? "", currentNews: currentNews, completion: { [weak self] isSuccess in
+            guard let `self` = self else { return }
+            
+            if isSuccess {
+                self.activityIndicator.isHidden = true
+                self.commentsButton.setTitle(" \(self.currentNews.commentsCount)", for: .normal)
+            } else {
+                
+            }
         })
     }
     
